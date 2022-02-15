@@ -1,0 +1,1 @@
+export PYO3_CONFIG_FILE=$(pwd)/pyo3_config.cfg

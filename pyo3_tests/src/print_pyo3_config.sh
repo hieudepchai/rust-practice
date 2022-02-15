@@ -1,0 +1,1 @@
+PYO3_PRINT_CONFIG=1 cargo build
