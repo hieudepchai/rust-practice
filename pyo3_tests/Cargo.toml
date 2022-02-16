@@ -21,3 +21,7 @@ path = "src/exp2.rs"
 [[example]]
 name = "exp3"
 path = "src/exp3.rs"
+
+[[example]]
+name = "exp4"
+path = "src/exp4.rs"

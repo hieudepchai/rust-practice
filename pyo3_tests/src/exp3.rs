@@ -1,24 +1,28 @@
-use pyo3::{
-    prelude::*,
-    types::{PyBytes, PyDict},
-};
+use pyo3::{prelude::*, py_run, types::PyDict};
+
+fn transform_with_custom_code(custom_code: &str) {
+    let field_transformer_code: &str = r#"
+class FieldTransformer:
+    def to_upper(self, value: str) -> str:
+        return value.upper()
+field_transformer = FieldTransformer()
+    "#;
+
+    let run_code = format!("{}\n{}", field_transformer_code, custom_code);
+    Python::with_gil(|py| {
+        let locals = PyDict::new(py);
+        py.run(&run_code, None, Some(locals)).unwrap();
+        let output = locals.get_item("output").unwrap();
+        println!("{}", output)
+    });
+}
 
 fn main() {
-    Python::with_gil(|py| -> PyResult<()> {
-        let locals = PyDict::new(py);
-        py.run(
-            r#"
-import sys
-from time import time
-print(sys.path)
-print(time())
-print(sys.executable)
-    "#,
-            None,
-            Some(locals),
-        )
-        .unwrap();
-        Ok(())
-    });
-    println!("abczy", );
+    let custom_code = r#"
+print(field_transformer)
+input = "Hello"
+print(input)
+output = field_transformer.to_upper(input)
+"#;
+    transform_with_custom_code(custom_code);
 }
