@@ -1,3 +1,4 @@
+"""Module for transformation helper classes"""
 import copy
 import hashlib
 import json
@@ -6,35 +7,14 @@ import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Union
+from typing import Any, Union
 
-# import iso8601
+import iso8601
 from dateutil.tz import tzoffset
-# from loguru import logger
+from loguru import logger
 
-from enum import Enum
-from dataclasses import dataclass
-
-
-FIREBASE_PROJECT_BRAND_MAPPER = {'com.armaniexchange.connected': {'brand': 'ax', 'env': 'prd'}, 'com.misfit.armaniexchange.staging': {'brand': 'ax', 'env': 'stg'}, 'com.misfit.armaniexchange.connected': {'brand': 'ax', 'env': 'stg'}, 'com.chaps.connected': {'brand': 'chaps', 'env': 'prd'}, 'com.misfit.chaps.staging': {'brand': 'chaps', 'env': 'stg'}, 'com.misfit.chaps.connected': {'brand': 'chaps', 'env': 'stg'}, 'com.diesel.on': {'brand': 'diesel', 'env': 'prd'}, 'com.misfit.diesel': {'brand': 'diesel', 'env': 'stg'}, 'com.misfit.diesel.staging': {'brand': 'diesel', 'env': 'stg'}, 'com.emporioarmani.connected': {'brand': 'ea', 'env': 'prd'}, 'com.misfit.emporioarmani.staging': {'brand': 'ea', 'env': 'stg'}, 'com.misfit.emporioarmani.connected': {'brand': 'ea', 'env': 'stg'}, 'com.fossil.q': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.qlegacy': {'brand': 'fossil', 'env': 'prd'}, 'com.misfit.fossil.legacy': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.wearables.fossil': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.wearables.fossil.staging': {'brand': 'fossil', 'env': 'stg'}, 'com.fossil.qlegacy.staging': {
-    'brand': 'fossil', 'env': 'stg'}, 'com.misfit.fossilq.staging': {'brand': 'fossil', 'env': 'stg'}, 'com.fossil.diana.debug': {'brand': 'fossil', 'env': 'stg'}, 'com.katespade.connected': {'brand': 'ks', 'env': 'prd'}, 'com.misfit.katespade.staging': {'brand': 'ks', 'env': 'stg'}, 'com.marcjacobs.mj': {'brand': 'mj', 'env': 'prd'}, 'com.misfit.marcjacobs.mj.staging': {'brand': 'mj', 'env': 'stg'}, 'com.misfit.marcjacobs.mj': {'brand': 'mj', 'env': 'stg'}, 'com.michaelkors.access': {'brand': 'mk', 'env': 'prd'}, 'com.misfit.michaelkors.staging': {'brand': 'mk', 'env': 'stg'}, 'com.misfit.portfolio.staging': {'brand': 'portfolio', 'env': 'stg'}, 'com.misfit.portfolio.diana.debug': {'brand': 'portfolio', 'env': 'stg'}, 'com.misfit.portfolio.diana.staging': {'brand': 'portfolio', 'env': 'stg'}, 'com.relic.connected': {'brand': 'relic', 'env': 'prd'}, 'com.misfit.relic.staging': {'brand': 'relic', 'env': 'prd'}, 'com.misfit.relic.connected': {'brand': 'relic', 'env': 'prd'}, 'com.skagen.connected': {'brand': 'skagen', 'env': 'prd'}, 'com.misfit.skagen.staging': {'brand': 'skagen', 'env': 'stg'}, 'com.misfit.skagen.connected': {'brand': 'skagen', 'env': 'stg'}}
-
-
-class FirebaseUtils():
-
-    @staticmethod
-    def get_brand_from_project(project_name: str, default_value=None) -> any:
-
-        brand_info = FIREBASE_PROJECT_BRAND_MAPPER.get(project_name, None)
-        if brand_info is None:
-            return default_value
-        return brand_info.get('brand')
-
-
-class TransformationException(Exception):
-
-    pass
-
+from .firebase_utils import FirebaseUtils
+from .transformation_exception import TransformationException
 
 TIMEZONE_COUNTRY = {}
 
@@ -45,7 +25,7 @@ TIMEZONE_COUNTRY = {}
 
 
 class FieldTransformer:
-    import re
+    """Transform value in a field"""
 
     SQL_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
     DATE_INDEX_FORMAT = "%Y%m%d"
@@ -88,6 +68,15 @@ class FieldTransformer:
         self._is_strict = strict
 
     def transform(self, value: any, method_name: str, **params: any) -> any:
+        """
+        Execute method base on its name
+
+        :param value: record value
+        :param method_name: Name of the method (unnest array...)
+        :param **params: Method param
+
+        :return: value
+        """
         method = getattr(self, method_name)
 
         if method:
@@ -100,6 +89,13 @@ class FieldTransformer:
         return copy.copy(value)
 
     def json_object_to_string(self, value: dict) -> str:
+        """
+        Transform json object to string
+
+        :param value: input value in dict format
+        :return: value in string format
+        """
+
         if isinstance(value, str):
             return value
 
@@ -112,11 +108,24 @@ class FieldTransformer:
         return string_obj
 
     def json_object_hash(self, value: dict) -> str:
+        """
+        Transform json object to MD5 hashed string.
+
+        :param value: input value in dict format
+        :return: md5 hash
+        """
         hashed = hashlib.md5(
             str(json.dumps(value, sort_keys=True)).encode('utf-8'))
         return hashed.hexdigest()
 
-    def normalize_datetime(self, value: any, datetime_format: str) -> datetime:
+    def normalize_datetime(self, value: Any, datetime_format: str) -> datetime:
+        """
+        Normalize datetime base on a time format
+
+        :param value: input value can be string ("2022-01-01", "20220101", ...)
+            or datetime object, otherwise will raise TransformationException
+        :return: datetime object
+        """
 
         if isinstance(value, str):
             datetime_value = datetime.strptime(value, datetime_format)
@@ -130,6 +139,7 @@ class FieldTransformer:
         return self.datetime_to_db_datetime(datetime_value)
 
     def convert_bson_object_id(self, value: Union[str, dict]) -> str:
+        """Convert bson objectId to string"""
 
         if isinstance(value, str):
             return value
@@ -141,7 +151,7 @@ class FieldTransformer:
         return None
 
     def convert_bson_long_datetime(self, value: Union[str, int, dict]) -> str:
-
+        """Convert bson long datetime to string"""
         timestamp = None
 
         if isinstance(value, str):
@@ -178,6 +188,7 @@ class FieldTransformer:
     def convert_bson_rfc3339_datetime(self,
                                       value: Union[str, dict],
                                       keep_zero_microsecond=True) -> str:
+        """Convert bson datetime rfc3339 to str"""
 
         if isinstance(value, dict) and "$date" in value:
             if isinstance(value["$date"], datetime):
@@ -198,7 +209,7 @@ class FieldTransformer:
         return None
 
     def to_date_index(self, value: Union[str, dict]) -> int:
-
+        """Convert bson datetime to date index (20180101)"""
         parsed_date = None
 
         if value and isinstance(value, dict) and "$date" in value:
@@ -236,7 +247,7 @@ class FieldTransformer:
         return 0
 
     def bson_date_to_datetime(self, value: Union[str, dict]) -> datetime:
-
+        """Convert bson datetime to datetime object"""
         parsed_date = None
 
         if value and isinstance(value, dict) and "$date" in value:
@@ -268,7 +279,7 @@ class FieldTransformer:
         return parsed_date
 
     def bson_date_to_time_index(self, value: Union[str, dict]) -> int:
-
+        """Convert bson datetime to time index (140219)"""
         timestamp = None
 
         if value and isinstance(value, dict) and "$date" in value:
@@ -307,48 +318,50 @@ class FieldTransformer:
 
         return timestamp
 
-    # def iso_8601_to_date_index(self, value: any) -> int:
-    #     """
-    #     Convert iso 8601 datetime to date index
-    #     :param value: iso 8601 datetime string. e.g. 2019-03-18T17:41:54.000Z
-    #     :return: date index. e.g. 20190318
+    def iso_8601_to_date_index(self, value: Any) -> int:
+        """
+        Convert iso 8601 datetime to date index
+        :param value: iso 8601 datetime string. e.g. 2019-03-18T17:41:54.000Z
+        :return: date index. e.g. 20190318
+        """
 
-    #     if not value:
-    #         return None
-    #     parsed_date = iso8601.parse_date(value)
+        if not value:
+            return None
+        parsed_date = iso8601.parse_date(value)
 
-    #     return self.datetime_to_date_index(parsed_date)
+        return self.datetime_to_date_index(parsed_date)
 
-    # def iso_8601_to_time_index(self, value: any) -> int:
-    #     """
-    #     Convert iso 8601 datetime to time index
-    #     :param value: iso 8601 datetime string. e.g. 2019-03-18T17:41:54.000Z
-    #     :return: time index. e.g. 174154
-    #     """
+    def iso_8601_to_time_index(self, value: Any) -> int:
+        """
+        Convert iso 8601 datetime to time index
+        :param value: iso 8601 datetime string. e.g. 2019-03-18T17:41:54.000Z
+        :return: time index. e.g. 174154
+        """
 
-    #     if not value:
-    #         return None
-    #     parsed_date = iso8601.parse_date(value)
+        if not value:
+            return None
+        parsed_date = iso8601.parse_date(value)
 
-    #     return self.datetime_to_time_index(parsed_date)
+        return self.datetime_to_time_index(parsed_date)
 
-    # def _rfc3339_datetime_to_db_datetime(self,
-    #                                      value: any,
-    #                                      keep_zero_microsecond=True) -> str:
-    #
+    def _rfc3339_datetime_to_db_datetime(self,
+                                         value: Any,
+                                         keep_zero_microsecond=True) -> str:
+        """rfc3339 datetime string to db datetime string"""
 
-    #     if not value:
-    #         return None
+        if not value:
+            return None
 
-    #     if isinstance(value, int):
-    #         parsed_date = datetime.fromtimestamp(
-    #             self.normalize_second_timestamp(value))
-    #     else:
-    #         parsed_date = iso8601.parse_date(value)
+        if isinstance(value, int):
+            parsed_date = datetime.fromtimestamp(
+                self.normalize_second_timestamp(value))
+        else:
+            parsed_date = iso8601.parse_date(value)
 
-    #     return self.datetime_to_db_datetime(parsed_date, keep_zero_microsecond)
+        return self.datetime_to_db_datetime(parsed_date, keep_zero_microsecond)
 
     def _rfc3339_to_timestamp(self, value: str) -> float:
+        """rfc3339 (e.g. 2019-12-22T16:28:17Z) to timestamp (e.g. 1577032097)"""
 
         if not value:
             return None
@@ -372,12 +385,12 @@ class FieldTransformer:
                 continue
 
         if error:
-            # logger.error(error)
-            pass
+            logger.error(error)
 
         return None
 
     def _epoch_to_db_datetime(self, value: int) -> str:
+        """Epoch to datetime: 1540787982 -> Monday, October 29, 2018 4:39:42 AM"""
 
         if not value:
             return None
@@ -389,6 +402,7 @@ class FieldTransformer:
     def datetime_to_db_datetime(self,
                                 value: datetime,
                                 keep_zero_microsecond=True) -> str:
+        """ -> 2018-01-01 02:02:02.1234"""
 
         if not keep_zero_microsecond or value.microsecond == 0:
             return "%04d-%02d-%02d %02d:%02d:%02d" % (
@@ -411,14 +425,25 @@ class FieldTransformer:
         )
 
     def datetime_to_date_index(self, value: datetime) -> int:
+        """ -> 20190101"""
 
         return int("%04d%02d%02d" % (value.year, value.month, value.day))
 
     def datetime_to_time_index(self, value: datetime) -> int:
+        """ -> 120505 (12 hour 05 minute 05 second)"""
 
         return int("%02d%02d%02d" % (value.hour, value.minute, value.second))
 
     def datetime_to_utc_offset(self, value: datetime, offset: int) -> datetime:
+        """Increase/decrease datetime by offset
+
+        Args:
+            value: datetime
+            offset: offset by hours
+
+        Returns:
+
+        """
 
         if offset < -12 or offset > 14:
             return None
@@ -426,6 +451,7 @@ class FieldTransformer:
         return value + timedelta(hours=offset)
 
     def unix_timestamp_to_db_date_time(self, value: float) -> str:
+        """unix timestamp 1543291177.123456 to date time"""
 
         if not value:
             return None
@@ -436,6 +462,7 @@ class FieldTransformer:
             datetime.utcfromtimestamp(timestamp))
 
     def unix_timestamp_to_date_index(self, value: float) -> int:
+        """unix timestamp 1543291177.123456 to date index"""
 
         if not value:
             return None
@@ -445,6 +472,7 @@ class FieldTransformer:
             datetime.utcfromtimestamp(timestamp))
 
     def unix_timestamp_to_time_index(self, value: float) -> int:
+        """unix timestamp 1543291177.123456 to time index"""
 
         if not value:
             return None
@@ -454,6 +482,7 @@ class FieldTransformer:
             datetime.utcfromtimestamp(timestamp))
 
     def http_date_to_db_date_time(self, value: str) -> str:
+        """HTTP date RFC 7231 Date/Time Formats to DB datetime"""
 
         if not value:
             return None
@@ -462,6 +491,7 @@ class FieldTransformer:
         return self.datetime_to_db_datetime(parsed_date)
 
     def http_date_to_date_index(self, value: str) -> int:
+        """HTTP date RFC 7231 Date/Time Formats to DB datetime"""
 
         if not value:
             return None
@@ -471,6 +501,7 @@ class FieldTransformer:
 
     def hwlog_time_to_local_date_index(self, value: str,
                                        tz_offset_in_minute: int) -> int:
+        """HTTP date RFC 7231 Date/Time Formats to local date index"""
 
         if not value:
             return None
@@ -483,6 +514,7 @@ class FieldTransformer:
 
     def hwlog_time_to_local_time_index(self, value: str,
                                        tz_offset_in_minute: int) -> int:
+        """HTTP date RFC 7231 Date/Time Formats to local time index"""
 
         if not value:
             return None
@@ -495,6 +527,7 @@ class FieldTransformer:
 
     def timestamp_to_local_date_index(self, value: float,
                                       tz_offset_in_second: int) -> int:
+        """Timestamp to local date index based on timezone"""
 
         if not value:
             return None
@@ -507,6 +540,7 @@ class FieldTransformer:
 
     def timestamp_to_local_time_index(self, value: float,
                                       tz_offset_in_second: int) -> int:
+        """Timestamp to local time index based on timezone"""
 
         if not value:
             return None
@@ -517,6 +551,7 @@ class FieldTransformer:
             parsed_date.astimezone(tz=tzoffset(None, tz_offset_in_second)))
 
     def http_date_to_time_index(self, value: str) -> int:
+        """HTTP date RFC 7231 Date/Time Formats to DB datetime"""
 
         if not value:
             return None
@@ -525,7 +560,7 @@ class FieldTransformer:
         return self.datetime_to_time_index(parsed_date)
 
     def normalize_millisecond_timestamp(self, value: Union[float, int]) -> int:
-
+        """Normalize timestamp to millisecond"""
         timestamp = float(value)
 
         if timestamp < self.MAX_SECOND_TIMESTAMP:
@@ -534,7 +569,7 @@ class FieldTransformer:
         return timestamp
 
     def normalize_second_timestamp(self, value: Union[float, int]) -> float:
-
+        """Normalize timestamp to second"""
         timestamp = float(value)
 
         while timestamp > self.MAX_SECOND_TIMESTAMP:
@@ -543,7 +578,7 @@ class FieldTransformer:
         return timestamp
 
     def epoch_to_iso_8601(self, value: Union[str, dict]) -> str:
-
+        """Convert epoch seconds to iso 8601 date time format YYYY-MM-DDThh:mm:ss.sssZ"""
         ts = self.normalize_second_timestamp(value["$date"])
         dt = datetime.utcfromtimestamp(ts)
         iso_format = dt.isoformat() + "Z"
@@ -551,66 +586,87 @@ class FieldTransformer:
         return iso_format
 
     def extract_sku(self, value: str) -> str:
+        """Extract sku from device id, ex W0F120421423 -> W0F120"""
 
         if isinstance(value, str):
             return value[:6]
 
         return None
 
-    def stringify(self, value: any) -> str:
+    def stringify(self, value: Any) -> str:
+        """Stringify ~"""
 
         return str(value)
 
     def lowercase(self, value: str) -> str:
+        """Lowercase ~"""
 
         return str(value).lower()
 
     def uppercase(self, value: str) -> str:
+        """Uppercase ~"""
 
         return str(value).upper()
 
     def string_hash_256(self, value: str) -> str:
+        """Hash with SHA256"""
 
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
     def string_to_int(self, value: str) -> int:
-
+        """Cast string to int, ex '12' -> 12. Return None if cast string to int"""
         try:
             return int(value)
         except Exception as e:
             return None
 
     def string_to_float(self, value: str) -> float:
-
+        """Cast string to float, ex '12.1' -> 12.1. Return None if cast failed"""
         try:
             return float(value)
         except Exception as e:
             return None
 
     def ceil(self, value: float) -> int:
-
+        """ Return the ceiling of value as a float, the smallest integer number greater than or equal to value """
         try:
             return math.ceil(value)
         except:
             return None
 
     def floor(self, value: float) -> int:
-
+        """Return the floor of value as a float, the largest integer number less than or equal to value """
         try:
             return math.floor(value)
         except:
             return None
 
     def transform_number_to_boolean(self, value: Union[float, int]) -> bool:
+        """
+        Number to boolean
+        e.g. 0 -> false, 1 -> true
+
+        :param value: input number
+        :return: boolean value
+        """
+
         if value != 0:
             return True
 
         return False
 
     def transform_with_custom_code(self,
-                                   value: any,
+                                   value: Any,
                                    custom_code: str,
-                                   custom_variables: dict = {}) -> any:
+                                   custom_variables: dict = {}) -> Any:
+        """
+        Custom transformation code
+
+        :param value: Input value
+        :param custom_code: Custom python transformation code, take value as local var, ex: "value + 1"
+        :param custom_variables: Custom variables, e.g. {"a": 1}
+        :return: Transformation result
+        """
         # http://lybniz2.sourceforge.net/safeeval.html
 
         safe_dict = copy.copy(self.EXEC_SAFE_DICT)
@@ -634,13 +690,28 @@ class FieldTransformer:
 
         return safe_dict.get("output")
 
-    def get_current_timestamp(self, value: any) -> float:
+    def get_current_timestamp(self, value: Any) -> float:
+        """
+        Return current timestamp
+
+        :param value: dummy value, not used
+
+        :return: Current timestamp in millisecond
+        """
+
         return time.time() * 1000
 
-    def get_current_datetime(self, value: any) -> datetime:
+    def get_current_datetime(self, value: Any) -> datetime:
         return datetime.now()
 
     def normalize_brand_id(self, value: str) -> str:
+        """
+        Normalize brand id from field 'db'
+        Doc: https://docs.google.com/spreadsheets/d/1wk5do1nRTkSSB73ZLGITZrFJAkuzvRRvLpwFkc_DN_0/edit#gid=0
+
+        :param value: brand string. e.g. fossil_q_stg
+        :return: brand id. e.g. fossil
+        """
         self.BRANDS.sort(key=len, reverse=True)
         namespace = os.getenv('NAMESPACE', 'aws_fossil').lower()
         for brand in self.BRANDS:
@@ -656,6 +727,16 @@ class FieldTransformer:
         return value
 
     def serial_number_to_product_code(self, value: str) -> str:
+        """
+        Get product code from serial_number.
+        This func is applied on hybrid only. Support SAM(SE1, SE0), SLIM, MINI, DIANA
+        Non hybrid devices are not affected.
+        Spec: https://drive.google.com/drive/u/0/folders/0B_bmSc3_H2KUZWgxZ3lwV25waFk
+        Spec: https://docs.google.com/spreadsheets/d/1lRtmsFj1qwEI5hQyCfeeRhnkWkH9xFMp1hYkLMY1sYs/edit#gid=1724493788
+
+        :param value: serial_number string. e.g. M0F30418M3
+        :return: product code has 6 characters in length. e.g. M0F304
+        """
         regex = r"^[WZDLM][0-9][CDEFHJKLMRSTWXYZ][0-Z]{3}"
 
         if isinstance(value, str) and re.match(regex, value):
@@ -664,6 +745,14 @@ class FieldTransformer:
         return "unknown"
 
     def serial_number_to_unique_identifier(self, value: str) -> str:
+        """
+        Get unique_identifier from serial_number.
+        This func is applied on hybrid only. Support SAM(SE1, SE0), SLIM, MINI, DIANA
+        Non hybrid devices are not affected.
+
+        :param value: serial_number string. e.g. ``M0F30418M3``
+        :return: ``unique_identifier`` has 4 characters in length. e.g. 18M3
+        """
         regex = r"^[WZDLM][0-9][CDEFHJKLMRSTWXYZ][0-Z]{3}"
 
         if isinstance(value, str) and re.match(regex, value):
@@ -672,6 +761,22 @@ class FieldTransformer:
         return None
 
     def serial_number_to_owner(self, value: str) -> str:
+        """
+        Get owner from serial_number.
+
+        :param value: serial_number string. e.g. M0F30418M3
+        :return:
+            .. code-block:: python
+
+                IF serial_number not NULL and serial_number[1] == '1':
+                    return 'citizen'
+                ELSE
+                    return 'fossil'
+
+            e.g.: serial_number = 'W0FG0112C5'  ==> 'fossil'
+            serial_number = 'M1N000013F'  ==> 'citizen'"
+        """
+
         if not value:
             return None
 
@@ -681,6 +786,13 @@ class FieldTransformer:
         return "fossil"
 
     def calculate_duration(self, record: dict, **params) -> float:
+        """
+        Calculate duration between two timestamp in second
+
+        :param record:
+        :param params: start time field name, end time field name
+        :return: new record within duration field
+        """
         start_timestamp = self.normalize_second_timestamp(
             record.get(params.get("start"), 0))
         end_timestamp = self.normalize_second_timestamp(
@@ -689,6 +801,10 @@ class FieldTransformer:
         return end_timestamp - start_timestamp
 
     def normalize_version(self, value: str) -> str:
+        """
+        Normalize the version x.y.z
+        e.g. `2.0` -> `2.0.0`, `2.0.0-debug` -> `2.0.0` 
+        """
         value = str(value).replace(" ", "")
 
         if self.VERSION_PATTERN_1.match(value):
@@ -701,9 +817,22 @@ class FieldTransformer:
         return None
 
     def transform_project_name_to_brand(self, value: str) -> str:
+        """Transform app package name to brand name
+
+        :param value: firebase project name (e.g. com.armaniexchange.connected, 
+            com.fossil.q, com.fossil.wearables.fossil, ...)
+        :return: brand name (e.g. ax, fossil, ...)
+        """
         return FirebaseUtils.get_brand_from_project(value)
 
     def transform_db_name_to_brand(self, value: str) -> str:
+        """
+        Transform db_name MongoDB to brand name.
+        (e.g. ea_stg -> ea, fossil_prd -> fossil)
+
+        :param value: database name
+        :return: brand name
+        """
         self.BRANDS.sort(key=len, reverse=True)
         namespace = os.getenv('NAMESPACE', 'aws_fossil').lower()
         for brand in self.BRANDS:
@@ -719,14 +848,21 @@ class FieldTransformer:
         return value
 
     def escape_special_character(self, value: str) -> str:
+        """ "a\nb" -> "a\\nb" """
 
         return str(value).encode("unicode_escape").decode("utf-8")
 
     def remove_spaces(self, value: str) -> str:
+        """ "a      b" -> "a b" """
 
         return re.sub(r"\s+", " ", value)
 
     def extract_error_code(self, value, **params):
+        """
+        Extract error code
+        Error code definition:
+        https://misfit.jira.com/wiki/spaces/PORT/pages/753336353/UX+4.0+Diana+BLE+flow#UX4.0DianaBLEflow-3.4.1.Step
+        """
         part = params.get("part")
 
         if value == "" and part == "step":
@@ -745,6 +881,9 @@ class FieldTransformer:
         return -1
 
     def extract_app_log_error_code(self, value, **params):
+        """
+        Extract error code for app log
+        """
         code_field = params.get("code_field")
         part = params.get("part")
 
@@ -764,6 +903,10 @@ class FieldTransformer:
         return self.extract_error_code(code, part=part)
 
     def is_dummy_email(self, email: str) -> bool:
+        """
+        Check if given email is dummy email.
+        """
+
         if email is not None and len(email.strip()) > 0:
             if self.DUMMY_EMAIL.match(email.lower()):
                 return True
@@ -771,13 +914,26 @@ class FieldTransformer:
         return False
 
     def is_dummy_device(self, serial_number: str) -> bool:
+        """
+        Check if given serial_number is dummy device.
+        """
+
         if serial_number is not None and len(serial_number.strip()) > 0:
             if self.DUMMY_DEVICE.match(serial_number.upper()):
                 return True
 
         return False
 
-    def extract_ate_id(self, ate_id: str) -> any:
+    def extract_ate_id(self, ate_id: str) -> Any:
+        """
+        Extract ate_id
+        Args:
+            ate_id: Example DW.MM.1-Flex.2.ZH
+
+        Return:
+            ate_category, ate_station, factory, station_number, city
+        """
+
         match = self.ATE_PATTERN_STANDARD_1.match(ate_id)
         ate_category = None
         ate_station = None
@@ -843,7 +999,16 @@ class FieldTransformer:
         return (ate_category, ate_station, factory, int(station_number
                                                         or -1), city)
 
-    def crc32_to_app_name(self, value: any) -> str:
+    def crc32_to_app_name(self, value: Any) -> str:
+        """
+        Get app name from CRC32_code_name of HW Log
+        Args:
+            value: hex or int of CRC32 code
+
+        Return:
+            App Name (e.g. settingsApp)
+        """
+
         # List CRC32 of node name: https://go.fossil.com/hw-log-sumup
         # Convert raw to this mapping: https://s.duyet.net/r/FgAR
         mapping = {
@@ -886,6 +1051,18 @@ class FieldTransformer:
         return mapping.get(str(value))
 
     def extract_timestamp_from_minute_data(self, minute_data: dict) -> int:
+        """
+        Extract timestamp from minute data
+
+        In msl sdk 4.x, timestamp represented by startTime
+        In msl sdk 5.x, timestamp represented by timestamp
+
+        Args:
+            minute_data:
+
+        Returns:
+
+        """
         timestamp = minute_data.get("startTime", None)
 
         if not timestamp:
@@ -894,12 +1071,17 @@ class FieldTransformer:
         try:
             return int(timestamp)
         except Exception:
-            # logger.debug(
-            #     f'extract_timestamp_from_minute_data: cannot cast {timestamp} to int'
-            # )
+            logger.debug(
+                f'extract_timestamp_from_minute_data: cannot cast {timestamp} to int'
+            )
             return None
 
-    def extract_software_reset_cause_infomation(self, record: dict) -> any:
+    def extract_software_reset_cause_infomation(self, record: dict) -> Any:
+        """
+        Extract software_reset_cause_key
+        https://docs.google.com/spreadsheets/d/1Zk7hQx8b8Jb47aMc2NTDgs8wD-I855zf_ht7LkLn3mY/edit#gid=1495176486
+        Table fact_software_reset
+        """
         software_reset_cause_key = "Unknown"
         information_key_1 = ''
         information_col_1 = ''
@@ -986,6 +1168,21 @@ class FieldTransformer:
                 information_col_2_hex)
 
     def generate_geo_id(self, value: dict) -> str:
+        """
+        Transform json object to MD5 hashed string.
+
+        :param value: input value in dict format
+                        {
+                            "continent": "Asia",
+                            "country": "India",
+                            "region": "Gujarat",
+                            "city": "Ahmedabad",
+                            "sub_continent": "Southern Asia",
+                            "metro": "(not set)"
+                        }
+        :return: md5 hash
+
+        """
         str_geo_id: str = (value["continent"] + value["country"] +
                            value["region"] + value["city"] +
                            value["sub_continent"])
@@ -995,6 +1192,13 @@ class FieldTransformer:
 
     def extract_device_type_from_sn_prefix(self, sn_prefix: str) -> str:
         # https://docs.google.com/spreadsheets/d/1sgD4AgsjWLeb2KEEeXnnXomxf1d1B0jex4H4_OHRPOE/edit#gid=0
+        """Extract device_type from serial_number_prefix,
+            ex  C0D101      -> Tracker
+                C3F9366     -> WearOS
+                K3F0040393D -> WearOS
+                W0D005      -> Hybrid
+
+        """
         pattern = re.compile("[A-Z0-9]+")
         if sn_prefix and pattern.fullmatch(sn_prefix):
             tracker_sn_prefixs = ["C0D101", "C0D102", "C0D201", "C0D202",
@@ -1014,6 +1218,3 @@ class FieldTransformer:
                 return 'Hybrid'
         else:
             return 'Hybrid'
-
-
-field_transformer = FieldTransformer()

@@ -15,37 +15,32 @@ from dateutil.tz import tzoffset
 from enum import Enum
 from dataclasses import dataclass
 
-
-FIREBASE_PROJECT_BRAND_MAPPER = {'com.armaniexchange.connected': {'brand': 'ax', 'env': 'prd'}, 'com.misfit.armaniexchange.staging': {'brand': 'ax', 'env': 'stg'}, 'com.misfit.armaniexchange.connected': {'brand': 'ax', 'env': 'stg'}, 'com.chaps.connected': {'brand': 'chaps', 'env': 'prd'}, 'com.misfit.chaps.staging': {'brand': 'chaps', 'env': 'stg'}, 'com.misfit.chaps.connected': {'brand': 'chaps', 'env': 'stg'}, 'com.diesel.on': {'brand': 'diesel', 'env': 'prd'}, 'com.misfit.diesel': {'brand': 'diesel', 'env': 'stg'}, 'com.misfit.diesel.staging': {'brand': 'diesel', 'env': 'stg'}, 'com.emporioarmani.connected': {'brand': 'ea', 'env': 'prd'}, 'com.misfit.emporioarmani.staging': {'brand': 'ea', 'env': 'stg'}, 'com.misfit.emporioarmani.connected': {'brand': 'ea', 'env': 'stg'}, 'com.fossil.q': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.qlegacy': {'brand': 'fossil', 'env': 'prd'}, 'com.misfit.fossil.legacy': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.wearables.fossil': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.wearables.fossil.staging': {'brand': 'fossil', 'env': 'stg'}, 'com.fossil.qlegacy.staging': {
-    'brand': 'fossil', 'env': 'stg'}, 'com.misfit.fossilq.staging': {'brand': 'fossil', 'env': 'stg'}, 'com.fossil.diana.debug': {'brand': 'fossil', 'env': 'stg'}, 'com.katespade.connected': {'brand': 'ks', 'env': 'prd'}, 'com.misfit.katespade.staging': {'brand': 'ks', 'env': 'stg'}, 'com.marcjacobs.mj': {'brand': 'mj', 'env': 'prd'}, 'com.misfit.marcjacobs.mj.staging': {'brand': 'mj', 'env': 'stg'}, 'com.misfit.marcjacobs.mj': {'brand': 'mj', 'env': 'stg'}, 'com.michaelkors.access': {'brand': 'mk', 'env': 'prd'}, 'com.misfit.michaelkors.staging': {'brand': 'mk', 'env': 'stg'}, 'com.misfit.portfolio.staging': {'brand': 'portfolio', 'env': 'stg'}, 'com.misfit.portfolio.diana.debug': {'brand': 'portfolio', 'env': 'stg'}, 'com.misfit.portfolio.diana.staging': {'brand': 'portfolio', 'env': 'stg'}, 'com.relic.connected': {'brand': 'relic', 'env': 'prd'}, 'com.misfit.relic.staging': {'brand': 'relic', 'env': 'prd'}, 'com.misfit.relic.connected': {'brand': 'relic', 'env': 'prd'}, 'com.skagen.connected': {'brand': 'skagen', 'env': 'prd'}, 'com.misfit.skagen.staging': {'brand': 'skagen', 'env': 'stg'}, 'com.misfit.skagen.connected': {'brand': 'skagen', 'env': 'stg'}}
-
-
-class FirebaseUtils():
-
-    @staticmethod
-    def get_brand_from_project(project_name: str, default_value=None) -> any:
-
-        brand_info = FIREBASE_PROJECT_BRAND_MAPPER.get(project_name, None)
-        if brand_info is None:
-            return default_value
-        return brand_info.get('brand')
-
-
 class TransformationException(Exception):
-
     pass
 
 
 TIMEZONE_COUNTRY = {}
 
-# TODO: Refactor datetime methods, i.e convert datetime from json/string format to
-# intermediate format (datetime, timestamp) for further transformation
-
-# pylint: disable=R0904,W0612
-
-
 class FieldTransformer:
+    import copy
+    import hashlib
+    import json
+    import math
+    import os
     import re
+    import time
+    from datetime import datetime, timedelta, timezone
+    from typing import Union
+
+    class FirebaseUtils:
+        @staticmethod
+        def get_brand_from_project(project_name: str, default_value=None) -> any:
+            FIREBASE_PROJECT_BRAND_MAPPER = {'com.armaniexchange.connected': {'brand': 'ax', 'env': 'prd'}, 'com.misfit.armaniexchange.staging': {'brand': 'ax', 'env': 'stg'}, 'com.misfit.armaniexchange.connected': {'brand': 'ax', 'env': 'stg'}, 'com.chaps.connected': {'brand': 'chaps', 'env': 'prd'}, 'com.misfit.chaps.staging': {'brand': 'chaps', 'env': 'stg'}, 'com.misfit.chaps.connected': {'brand': 'chaps', 'env': 'stg'}, 'com.diesel.on': {'brand': 'diesel', 'env': 'prd'}, 'com.misfit.diesel': {'brand': 'diesel', 'env': 'stg'}, 'com.misfit.diesel.staging': {'brand': 'diesel', 'env': 'stg'}, 'com.emporioarmani.connected': {'brand': 'ea', 'env': 'prd'}, 'com.misfit.emporioarmani.staging': {'brand': 'ea', 'env': 'stg'}, 'com.misfit.emporioarmani.connected': {'brand': 'ea', 'env': 'stg'}, 'com.fossil.q': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.qlegacy': {'brand': 'fossil', 'env': 'prd'}, 'com.misfit.fossil.legacy': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.wearables.fossil': {'brand': 'fossil', 'env': 'prd'}, 'com.fossil.wearables.fossil.staging': {'brand': 'fossil', 'env': 'stg'}, 'com.fossil.qlegacy.staging': {
+                'brand': 'fossil', 'env': 'stg'}, 'com.misfit.fossilq.staging': {'brand': 'fossil', 'env': 'stg'}, 'com.fossil.diana.debug': {'brand': 'fossil', 'env': 'stg'}, 'com.katespade.connected': {'brand': 'ks', 'env': 'prd'}, 'com.misfit.katespade.staging': {'brand': 'ks', 'env': 'stg'}, 'com.marcjacobs.mj': {'brand': 'mj', 'env': 'prd'}, 'com.misfit.marcjacobs.mj.staging': {'brand': 'mj', 'env': 'stg'}, 'com.misfit.marcjacobs.mj': {'brand': 'mj', 'env': 'stg'}, 'com.michaelkors.access': {'brand': 'mk', 'env': 'prd'}, 'com.misfit.michaelkors.staging': {'brand': 'mk', 'env': 'stg'}, 'com.misfit.portfolio.staging': {'brand': 'portfolio', 'env': 'stg'}, 'com.misfit.portfolio.diana.debug': {'brand': 'portfolio', 'env': 'stg'}, 'com.misfit.portfolio.diana.staging': {'brand': 'portfolio', 'env': 'stg'}, 'com.relic.connected': {'brand': 'relic', 'env': 'prd'}, 'com.misfit.relic.staging': {'brand': 'relic', 'env': 'prd'}, 'com.misfit.relic.connected': {'brand': 'relic', 'env': 'prd'}, 'com.skagen.connected': {'brand': 'skagen', 'env': 'prd'}, 'com.misfit.skagen.staging': {'brand': 'skagen', 'env': 'stg'}, 'com.misfit.skagen.connected': {'brand': 'skagen', 'env': 'stg'}}
+            brand_info = FIREBASE_PROJECT_BRAND_MAPPER.get(project_name, None)
+            if brand_info is None:
+                return default_value
+            return brand_info.get('brand')
 
     SQL_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f"
     DATE_INDEX_FORMAT = "%Y%m%d"
@@ -58,7 +53,7 @@ class FieldTransformer:
         'ax', 'fossil', 'mj', 'universal', 'portfolio'
     ]
     EXEC_SAFE_DICT = dict([(k, globals().get(k, None))
-                           for k in EXEC_SAFE_LIST])
+                        for k in EXEC_SAFE_LIST])
     CUSTOM_CODE = {}
 
     VERSION_PATTERN_1 = re.compile(r"^\d{1,3}$")
@@ -164,7 +159,7 @@ class FieldTransformer:
 
             if "$numberLong" in value:
                 if isinstance(value["$numberLong"],
-                              str) and value["$numberLong"].isdigit():
+                            str) and value["$numberLong"].isdigit():
                     timestamp = int(value["$numberLong"])
 
         if timestamp:
@@ -176,8 +171,8 @@ class FieldTransformer:
         return None
 
     def convert_bson_rfc3339_datetime(self,
-                                      value: Union[str, dict],
-                                      keep_zero_microsecond=True) -> str:
+                                    value: Union[str, dict],
+                                    keep_zero_microsecond=True) -> str:
 
         if isinstance(value, dict) and "$date" in value:
             if isinstance(value["$date"], datetime):
@@ -470,7 +465,7 @@ class FieldTransformer:
         return self.datetime_to_date_index(parsed_date)
 
     def hwlog_time_to_local_date_index(self, value: str,
-                                       tz_offset_in_minute: int) -> int:
+                                    tz_offset_in_minute: int) -> int:
 
         if not value:
             return None
@@ -479,10 +474,10 @@ class FieldTransformer:
 
         return self.datetime_to_date_index(
             parsed_date.astimezone(tz=tzoffset(None, tz_offset_in_minute *
-                                               60)))
+                                            60)))
 
     def hwlog_time_to_local_time_index(self, value: str,
-                                       tz_offset_in_minute: int) -> int:
+                                    tz_offset_in_minute: int) -> int:
 
         if not value:
             return None
@@ -491,10 +486,10 @@ class FieldTransformer:
 
         return self.datetime_to_time_index(
             parsed_date.astimezone(tz=tzoffset(None, tz_offset_in_minute *
-                                               60)))
+                                            60)))
 
     def timestamp_to_local_date_index(self, value: float,
-                                      tz_offset_in_second: int) -> int:
+                                    tz_offset_in_second: int) -> int:
 
         if not value:
             return None
@@ -506,7 +501,7 @@ class FieldTransformer:
                 tz=tzoffset(None, tz_offset_in_second)))
 
     def timestamp_to_local_time_index(self, value: float,
-                                      tz_offset_in_second: int) -> int:
+                                    tz_offset_in_second: int) -> int:
 
         if not value:
             return None
@@ -608,9 +603,9 @@ class FieldTransformer:
         return False
 
     def transform_with_custom_code(self,
-                                   value: any,
-                                   custom_code: str,
-                                   custom_variables: dict = {}) -> any:
+                                value: any,
+                                custom_code: str,
+                                custom_variables: dict = {}) -> any:
         # http://lybniz2.sourceforge.net/safeeval.html
 
         safe_dict = copy.copy(self.EXEC_SAFE_DICT)
@@ -625,8 +620,8 @@ class FieldTransformer:
             if isinstance(custom_code, list):
                 custom_code = "\r\n".join(custom_code)
             self.CUSTOM_CODE[custom_code_id] = compile(custom_code,
-                                                       f"{custom_code_id}.py",
-                                                       "exec")
+                                                    f"{custom_code_id}.py",
+                                                    "exec")
 
         code_obj = self.CUSTOM_CODE[custom_code_id]
 
@@ -648,7 +643,7 @@ class FieldTransformer:
                 if brand == 'universal' and namespace == 'aws_citizen':
                     return 'universal_citizen'
                 elif brand == 'universal' and (namespace == 'aws_fossil' or
-                                               namespace == 'aliyun_fossil'):
+                                            namespace == 'aliyun_fossil'):
                     return 'universal'
                 else:
                     return brand
@@ -701,7 +696,7 @@ class FieldTransformer:
         return None
 
     def transform_project_name_to_brand(self, value: str) -> str:
-        return FirebaseUtils.get_brand_from_project(value)
+        return self.FirebaseUtils.get_brand_from_project(value)
 
     def transform_db_name_to_brand(self, value: str) -> str:
         self.BRANDS.sort(key=len, reverse=True)
@@ -711,7 +706,7 @@ class FieldTransformer:
                 if brand == 'universal' and namespace == 'aws_citizen':
                     return 'universal_citizen'
                 elif brand == 'universal' and (namespace == 'aws_fossil' or
-                                               namespace == 'aliyun_fossil'):
+                                            namespace == 'aliyun_fossil'):
                     return 'universal'
                 else:
                     return brand
@@ -987,8 +982,8 @@ class FieldTransformer:
 
     def generate_geo_id(self, value: dict) -> str:
         str_geo_id: str = (value["continent"] + value["country"] +
-                           value["region"] + value["city"] +
-                           value["sub_continent"])
+                        value["region"] + value["city"] +
+                        value["sub_continent"])
 
         hashed = hashlib.md5(str_geo_id.encode('utf-8'))
         return hashed.hexdigest()
@@ -998,13 +993,13 @@ class FieldTransformer:
         pattern = re.compile("[A-Z0-9]+")
         if sn_prefix and pattern.fullmatch(sn_prefix):
             tracker_sn_prefixs = ["C0D101", "C0D102", "C0D201", "C0D202",
-                                  "C0K101", "C0K102", "C0K103", "C0K104", "C0K105", "C0K106", "C0K107", "C0K108",
-                                  "C0K109", "C0K201", "C0K202", "C0K301", "C0K302", "C0K303", "C0K304", "C0K305",
-                                  "C0K306", "C0K307", "C0K308", "C0K309",
-                                  "C0M101", "C0M102", "C0M103", "C0M104", "C0M105", "C0M106", "C0M107", "C0M201",
-                                  "C0M202", "C0M203", "C0M204", "C0M205", "C0M301", "C0M302", "C0M303", "C0M304",
-                                  "C0M305", "C0M401", "C0M402", "C0M403", "C0M501", "C0M502", "C0M503",
-                                  "C0S101", "C0S102"]
+                                "C0K101", "C0K102", "C0K103", "C0K104", "C0K105", "C0K106", "C0K107", "C0K108",
+                                "C0K109", "C0K201", "C0K202", "C0K301", "C0K302", "C0K303", "C0K304", "C0K305",
+                                "C0K306", "C0K307", "C0K308", "C0K309",
+                                "C0M101", "C0M102", "C0M103", "C0M104", "C0M105", "C0M106", "C0M107", "C0M201",
+                                "C0M202", "C0M203", "C0M204", "C0M205", "C0M301", "C0M302", "C0M303", "C0M304",
+                                "C0M305", "C0M401", "C0M402", "C0M403", "C0M501", "C0M502", "C0M503",
+                                "C0S101", "C0S102"]
 
             if sn_prefix in tracker_sn_prefixs:
                 return 'Tracker'
@@ -1014,6 +1009,5 @@ class FieldTransformer:
                 return 'Hybrid'
         else:
             return 'Hybrid'
-
 
 field_transformer = FieldTransformer()

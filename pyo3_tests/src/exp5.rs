@@ -4,6 +4,8 @@ fn transform_with_custom_code(custom_code: &str) {
     let field_transformer_code: &str = r#"
 
 import hashlib
+print(hashlib.algorithms_available)
+print(hashlib.algorithms_guaranteed)
 class FieldTransformer:
     def to_upper(self, value: str) -> str:
         return value.upper()
